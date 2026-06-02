@@ -4,6 +4,16 @@
 > Real-time hand gesture recognition powered by MediaPipe & OpenCV.
 
 ![Demo](assets/demo.png)
+## 🎬 Demo
+
+### Gesture Halo
+![Halo](assets/hallo.gif)
+
+### Gesture Jempol
+![Jempol](assets/jempol.gif)
+
+### Gesture Apa Kabar
+![Apa Kabar](assets/apakabar.gif)
 
 ## ✨ Fitur
 - 🖐️ Deteksi tangan secara realtime
