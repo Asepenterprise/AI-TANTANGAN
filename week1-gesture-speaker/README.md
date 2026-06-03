@@ -15,6 +15,9 @@
 ### Gesture Apa Kabar
 ![Apa Kabar](assets/apakabar.gif)
 
+## Day 5 UI + FPS
+![ASEP GANTENG](assets/fps.png)
+
 ## ✨ Fitur
 - 🖐️ Deteksi tangan secara realtime
 - 🔴 21 titik landmark tangan
