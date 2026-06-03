@@ -1,3 +1,4 @@
+import time
 import threading
 
 from gtts import  gTTS
@@ -57,14 +58,33 @@ pygame.mixer.init()
 print("Suara siap")
 gesture_lama = ""
 
+fps_time = time.time()
+
+def tampilkan_ui(frame, gesture, fps):
+    h, w, _ = frame.shape
+
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (0, 0), (w, 60), (0, 0, 0), -1)
+    cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
+
+    cv2.putText(frame, f'FPS: {int(fps)}', (10, 30), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+    
+    if gesture != "":
+        cv2.putText(frame, f"Gesture: {gesture}", (10, 80),
+                 cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 255), 3)
+
+
 while True:
     ret, frame = cap.read()
     if not ret or frame is None:
         continue
+    frame = cv2.flip(frame, 1)
 
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     hasil = hands.process(frame_rgb)
 
+    gesture = ""
     if hasil.multi_hand_landmarks:
         for hand_landmarks in hasil.multi_hand_landmarks:
             mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
@@ -109,9 +129,9 @@ while True:
                 speak(gesture)
                 gesture_lama = gesture
 
-            if gesture !="":
-                cv2.putText(frame, f"Gesture: {gesture}", (10, 50),
-                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+    fps = 1 / (time.time() - fps_time)
+    fps_time = time.time()
+    tampilkan_ui(frame, gesture, fps)
 
     cv2.imshow('Gesture Detection', frame)
 
