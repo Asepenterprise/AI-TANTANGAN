@@ -18,6 +18,9 @@
 ## Day 5 UI + FPS
 ![ASEP GANTENG](assets/fps.png)
 
+##Day 6 BIOMETRIK
+![ASEP ENGINEER](assets/SIGMAENGINEER.png)
+
 ## ✨ Fitur
 - 🖐️ Deteksi tangan secara realtime
 - 🔴 21 titik landmark tangan
