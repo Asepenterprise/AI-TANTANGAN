@@ -1,3 +1,5 @@
+import subprocess
+
 import time
 import threading
 
@@ -44,7 +46,11 @@ suara_list = {
     "Lima": "suara_lima.mp3",
     "Halo!": "suara_halo.mp3",
     "Jempol!": "suara_jempol.mp3",
-    "Apa kabar?": "suara_apakabar.mp3"
+    "Apa kabar?": "suara_apakabar.mp3",
+    "Aku Ashraf": "suara_akuashraf.mp3",
+    "I": "suara_i.mp3",
+    "LOVE": "suara_Love.mp3",
+    "YOU": "suara_you.mp3"
 }
 
 print("generating suara...")
@@ -60,7 +66,12 @@ gesture_lama = ""
 
 fps_time = time.time()
 
-def tampilkan_ui(frame, gesture, fps):
+scan_status = "SIAP"
+scan_status = "SCANNING"
+scan_status = "AKSES DITERIMA"
+scan_selesai = "COOLDOWN"
+
+def tampilkan_ui(frame, gesture, fps, gesture_hold = "", waktu_mulai = None):
     h, w, _ = frame.shape
 
     overlay = frame.copy()
@@ -73,7 +84,49 @@ def tampilkan_ui(frame, gesture, fps):
     if gesture != "":
         cv2.putText(frame, f"Gesture: {gesture}", (10, 80),
                  cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 255), 3)
+        #BIOMETRIC
+        if gesture_hold != "" and waktu_mulai is not None:
+            durasi = time.time() - waktu_mulai
+            persen = max(0, min(int((durasi / 3) * 100), 100))
+            bar_width = int((w * persen) / 100)
+            cv2.rectangle(frame, (0, h-20), (bar_width, h), (0, 255, 0), -1)
+            cv2.putText(frame, f"{scan_status} {persen}%",(10, h - 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                    
 
+gesture_lama = ""
+tahap = 0
+mode = "normal"
+fps_time = time.time()
+waktu_mulai = None
+gesture_hold = ""
+scan_selesai = False
+cooldown = 0
+
+print("gesture=",gesture)
+print("hold=", gesture_hold)
+
+
+def buka_app(gesture):
+    print("MEMBUKA:", gesture)
+
+    try:
+        if gesture == "Peace":
+            subprocess.Popen(["code"])
+
+        elif gesture == "Jempol":
+            subprocess.Popen([
+                "xdg-open",
+                "https://www.instagram.com/asepenterprise/"
+            ])
+
+        elif gesture == "Telapak":
+            subprocess.Popen([
+                "xdg-open",
+                "https://youtu.be/1WxooiESNoQ?si=RVG0ws-9AFN72S6d"
+            ])
+
+    except Exception as e:
+        print("ERROR:", e)
 
 while True:
     ret, frame = cap.read()
@@ -104,34 +157,91 @@ while True:
                 else:
                     jari.append(False)
 
-            # GESTURE RECOGNITION
-            gesture = ""
+                gesture = ""
             if jari == [False, False, False, False, False]:
-                gesture = "Nol"
+               gesture = "Nol"
             if jari == [False, True, False, False, False]:
-                gesture = "Satu"
+               gesture = "Satu"
             if jari == [False, True, True, False, False]:
-                gesture = "Dua"
+               gesture = "Dua"
             if jari == [False, True, True, True, False]:
-                gesture = "Tiga"
+               gesture = "Tiga"
             if jari == [False, True, True, True, True]:
-                gesture = "Empat"
-            if jari == [True, True, True, True, True]:
-                gesture = "Lima"
-            if jari == [False, True, False, False, True]:
-                gesture = "Halo!"
-            if jari == [True, False, False, False, False]:
-                gesture = "Jempol!"
-            if jari == [True, False, False, False, True]:
-                gesture = "Apa kabar?"
+               gesture = "Empat"
 
-            if gesture != "" and gesture != gesture_lama:
-                speak(gesture)
-                gesture_lama = gesture
+            # BIOMETRIC GESTURES
+            if jari == [False, True, True, False, False]:
+               gesture = "Peace"
+            if jari == [True, False, False, False, False]:
+               gesture = "Jempol"
+            if jari == [True, True, True, True, True]:
+               gesture = "Telapak"
+
+            # 
+            if gesture in ["Peace", "Jempol", "Telapak"]:
+              
+              sekarang = time.time()
+
+              if sekarang < cooldown:
+                 scan_status = "COOLDOWN"
+
+              else:
+                 
+              
+                if gesture_hold == "":
+                   gesture_hold = gesture
+                   waktu_mulai = sekarang
+                   scan_selesai = False
+
+                   scan_status = "SCANNING"
+
+    # gesture masih sama
+                elif gesture == gesture_hold and not scan_selesai:
+                   durasi = sekarang - waktu_mulai
+                   print(
+                         "gesture =", gesture,
+                         "hold =", gesture_hold,
+                         "durasi =", round(durasi,2)
+                          )
+
+                   if durasi >= 3:
+                      scan_status = "AKSES DITERIMA"
+                      print("SCAN : BERHASIL", gesture)
+
+                   buka_app(gesture)
+
+                   scan_selesai = True
+
+                   cooldown = sekarang + 5
+
+                   gesture_hold = ""
+                   waktu_mulai = None
+
+
+                elif gesture != gesture_hold:
+                   
+                    if gesture in ["Peace", "Jempol", "Telapak"]:
+                   
+                        gesture_hold = gesture
+                        waktu_mulai = sekarang
+                        scan_selesai = False
+
+   
+            else:
+                gesture_hold = ""
+                waktu_mulai = None 
+                scan_selesai = False
+
+                scan_status = "SCAN SIAP"
+ 
+       
+    if gesture != "" and gesture != gesture_lama:
+       speak(gesture)
+       gesture_lama = gesture
 
     fps = 1 / (time.time() - fps_time)
     fps_time = time.time()
-    tampilkan_ui(frame, gesture, fps)
+    tampilkan_ui(frame, gesture, fps, gesture_hold, waktu_mulai)
 
     cv2.imshow('Gesture Detection', frame)
 
