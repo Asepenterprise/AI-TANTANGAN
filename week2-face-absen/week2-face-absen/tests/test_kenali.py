@@ -5,7 +5,6 @@ import numpy as np
 import time
 import threading
 
-# KAMERA DULU
 cap = cv2.VideoCapture(0)
 time.sleep(2)
 
@@ -33,7 +32,7 @@ def load_dataset():
     dataset_siap = True
     print(f"Dataset siap! {len(dataset_wajah)} wajah")
 
-# Jalankan load dataset di background
+
 threading.Thread(target=load_dataset).start()
 
 frame_count = 0
