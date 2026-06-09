@@ -1,7 +1,10 @@
+
 import cv2
 import face_recognition
 import os
 import numpy as np
+import pygame
+from gtts import gTTS
 import time
 import threading
 import csv
@@ -21,8 +24,22 @@ def catat_absen(nama):
      with open('data/absensi.csv', 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['Nama', 'Tanggal', 'Jam'])
+
+    with open('data/absensi.csv', 'a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([nama, tanggal, jam])
     
     print(f"✅ {nama} absen pada {tanggal} {jam}")
+
+def sambut(nama):
+    def play():
+        teks = f"Selamat datang, {nama}"
+        tts = gTTS(text=teks, lang='id')
+        tts.save(f"data_sambut_{nama}.mp3")
+        pygame.mixer.init()
+        pygame.mixer.music.load(f"data_sambut_{nama}.mp3")
+        pygame.mixer.music.play()
+    threading.Thread(target=play).start()
 
 # === LOAD DATASET ===
 dataset_wajah = []
@@ -79,6 +96,20 @@ while True:
             hasil = face_recognition.compare_faces(dataset_wajah, encoding)
             nama = "Tidak Dikenal"
 
+            h, w, _ = frame.shape
+            overlay = frame.copy()
+            cv2.rectangle(overlay, (w-250, 0), (w, len(sudah_absen)*30+60), (0,0,0), -1)
+            cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
+
+
+            cv2.putText(frame, "DAFTAR KEHADIRAN", (w-240, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            
+            for i, orang in enumerate(sudah_absen):
+                cv2.putText(frame, f">> {orang}", (w-240, 60 + i*30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+
+
             if True in hasil:
                 index = hasil.index(True)
                 nama = dataset_nama[index]
@@ -86,6 +117,7 @@ while True:
                 # Catat absen kalau belum absen
                 if nama not in sudah_absen:
                     catat_absen(nama)
+                    sambut(nama)
                     sudah_absen.append(nama)
 
             top, right, bottom, left = [x*4 for x in lokasi_wajah]
