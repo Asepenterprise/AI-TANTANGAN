@@ -4,8 +4,9 @@ import time
 import sqlite3 
 from vision.detector import TargetDetector
 from utils.database import GameDatabase
-from utils.audio import GameAudio # 1. Import Audio Driver
+from utils.audio import GameAudio 
 
+# === CONFIG MISI & WARNA (Dynamic dengan batasan WAKTU) ===
 misi_list = [
     {
         "id": 1,
@@ -15,7 +16,8 @@ misi_list = [
         "hsv_lower": [60, 0, 80],
         "hsv_upper": [110, 100, 255],
         "xp": 50,
-        "hadiah_item": "Kunci Kuno Emas"
+        "hadiah_item": "Kunci Kuno Emas",
+        "durasi": 20  # Batas waktu dalam detik
     },
     {
         "id": 2,
@@ -25,7 +27,8 @@ misi_list = [
         "hsv_lower": [0, 120, 70],
         "hsv_upper": [10, 255, 255],
         "xp": 100,
-        "hadiah_item": "Kristal Merah Koron"
+        "hadiah_item": "Kristal Merah Koron",
+        "durasi": 15
     },
     {
         "id": 3,
@@ -35,10 +38,12 @@ misi_list = [
         "hsv_lower": [100, 150, 50],
         "hsv_upper": [140, 255, 255],
         "xp": 150,
-        "hadiah_item": "Plakat Biru Atlantis"
+        "hadiah_item": "Plakat Biru Atlantis",
+        "durasi": 15
     }
 ]
 
+# === INITIALIZATION ===
 cap = cv2.VideoCapture(0)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
@@ -50,10 +55,10 @@ if not cap.isOpened():
     exit()
 
 detector = TargetDetector()
-
 db = GameDatabase()
-audio = GameAudio() # 2. Inisialisasi Audio Engine
+audio = GameAudio() 
 
+# Load progress dari SQLite
 saved_xp, saved_level, saved_misi_index = db.load_game()
 
 xp = saved_xp
@@ -66,11 +71,19 @@ if misi_index >= len(misi_list):
 else:
     state = "INTRO"
 
+# Voice sambutan pembuka game
 audio.speak("Welcome back, Hunter Ash. Ready to find the artifacts?")
 
 story_index = 0
 story_timer = time.time()
 scan_progress = 0
+
+# Variabel Mekanik Visual Laser & Waktu Real-Time
+laser_y = 80
+laser_speed = 4
+misi_start_time = 0 
+sisa_waktu = 0
+warning_played = False  # Flag pencegah spamming suara AI Panic Mode
 
 story = [
     "Dahulu kala ada seorang anak bernama Ash...",
@@ -92,6 +105,10 @@ story = [
     "Misi dimulai..."
 ]
 
+# =========================================================
+# === KUMPULAN FUNGSI UI CORNER ===
+# =========================================================
+
 def teks_tengah(frame, teks, x_start, x_end, y, font, scale, warna, tebal):
     size = cv2.getTextSize(teks, font, scale, tebal)[0]
     lebar_teks = size[0]
@@ -102,7 +119,7 @@ def teks_tengah(frame, teks, x_start, x_end, y, font, scale, warna, tebal):
 def gambar_ui_header(frame, w, h):
     cv2.rectangle(frame, (0, 0), (w, 60), (15, 15, 15), -1)
     cv2.line(frame, (0, 60), (w, 60), (0, 255, 255), 2)
-    cv2.putText(frame, "TREASURE HUNTER", (20, 40), cv2.FONT_HERSHEY_DUPLEX, 0.9, (0, 255, 255), 2)
+    cv2.putText(frame, "TREASURE HUNTER - Asep Enterprise", (20, 40), cv2.FONT_HERSHEY_DUPLEX, 0.9, (0, 255, 255), 2)
     
     cv2.rectangle(frame, (w-260, 15), (w-20, 45), (40, 40, 40), -1)
     cv2.rectangle(frame, (w-260, 15), (w-20, 45), (0, 255, 0), 1)
@@ -138,6 +155,10 @@ def teks_berkedip_tengah(frame, teks, x_start, x_end, y, font, scale, warna, teb
     if int(time.time() * 3) % 2 == 0:
         teks_tengah(frame, teks, x_start, x_end, y, font, scale, warna, tebal)
 
+# =========================================================
+# === MAIN LOOP UTAMA ===
+# =========================================================
+
 while True:
     ret, frame = cap.read()
     if not ret or frame is None:
@@ -147,6 +168,7 @@ while True:
     h, w, _ = frame.shape
     sekarang = time.time()
 
+    # Efek Background Dim Terpusat
     overlay = frame.copy()
     cv2.rectangle(overlay, (0, 0), (w, h), (10, 10, 20), -1)
     cv2.addWeighted(overlay, 0.4, frame, 0.6, 0, frame)
@@ -154,6 +176,7 @@ while True:
     gambar_ui_header(frame, w, h)
     gambar_ui_inventory(frame, w, h)
 
+    # === STATE: INTRO ===
     if state == "INTRO":
         cv2.rectangle(frame, (50, 90), (w-50, h-190), (20, 20, 20), -1)
         cv2.rectangle(frame, (50, 90), (w-50, h-190), (0, 255, 255), 2)
@@ -170,17 +193,44 @@ while True:
         else:
             teks_berkedip_tengah(frame, ">>> TEKAN SPASI UNTUK MULAI MISI <<<", 50, w-50, h-220, cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2)
 
+    # === STATE: MISI ===
     elif state == "MISI":
         misi = misi_list[misi_index]
         gambar_hud_kamera(frame, w, h)
 
-        cv2.rectangle(frame, (20, 80), (480, 200), (30, 30, 30), -1)
-        cv2.rectangle(frame, (20, 80), (480, 200), (0, 200, 255), 2)
+        # 1. Logika Countdown Timer Sisa Waktu
+        terpakai = sekarang - misi_start_time
+        sisa_waktu = max(0, misi['durasi'] - terpakai)
+        
+        if sisa_waktu <= 0:
+            state = "GAME_OVER"
+            audio.speak("Time is up! Mission failed.")
+
+        # 2. AI Panic Mode Warning (Dipanggil sekali saat sisa waktu < 5 detik)
+        if sisa_waktu <= 5 and not warning_played and sisa_waktu > 0:
+            audio.speak("Warning! Time is running out!")
+            warning_played = True
+
+        # 3. Animasi Sci-Fi Scan Line (Laser Bergerak)
+        laser_y += laser_speed
+        if laser_y >= (h - 180) or laser_y <= 80:
+            laser_speed = -laser_speed  # Balik arah laser
+            
+        cv2.line(frame, (30, laser_y), (w-30, laser_y), (0, 255, 0), 2)
+
+        # Panel HUD Info Misi
+        cv2.rectangle(frame, (20, 80), (480, 220), (30, 30, 30), -1)
+        cv2.rectangle(frame, (20, 80), (480, 220), (0, 200, 255), 2)
 
         cv2.putText(frame, f"{misi['judul']}", (35, 115), cv2.FONT_HERSHEY_DUPLEX, 0.65, (0, 255, 255), 1)
         cv2.putText(frame, misi['deskripsi'], (35, 145), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         cv2.putText(frame, f"Petunjuk: {misi['petunjuk']}", (35, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1)
+        
+        # Render Indikator Sisa Waktu Terbuka
+        warna_timer = (0, 0, 255) if sisa_waktu < 5 else (0, 255, 255)
+        cv2.putText(frame, f"SISA WAKTU: {int(sisa_waktu)}s", (35, 205), cv2.FONT_HERSHEY_DUPLEX, 0.55, warna_timer, 2)
 
+        # Hitung Scan Progress OpenCV Detector
         persen = detector.hitung_persen_warna(frame, misi["hsv_lower"], misi["hsv_upper"])
 
         if persen > 8: 
@@ -203,6 +253,7 @@ while True:
         if scan_progress >= 100:
             state = "SUKSES"
 
+    # === STATE: SUKSES (Hanya untuk Render Pop-up) ===
     elif state == "SUKSES":
         misi = misi_list[misi_index]
         x1, y1, x2, y2 = w//2-250, h//2-120, w//2+250, h//2+120
@@ -210,8 +261,9 @@ while True:
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 4)
 
         teks_tengah(frame, "OBJEK TERIDENTIFIKASI!", x1, x2, y1+50, cv2.FONT_HERSHEY_DUPLEX, 0.8, (0, 255, 0), 2)
-        teks_tengah(frame, f"REWARD: +{misi['xp']} XP", x1, x2, y1+110, cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
-        teks_berkedip_tengah(frame, ">>> TEKAN SPASI UNTUK LANJUT <<<", x1, x2, y1+180, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        teks_tengah(frame, f"REWARD AWAL: +{misi['xp']} XP", x1, x2, y1+100, cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 255), 1)
+        teks_tengah(frame, f"BONUS WAKTU: +{int(sisa_waktu) * 10} XP", x1, x2, y1+130, cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 1)
+        teks_berkedip_tengah(frame, ">>> TEKAN SPASI UNTUK KLAIM HADIYAH <<<", x1, x2, y1+180, cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
 
     # === STATE: GAME OVER ===
     elif state == "GAME_OVER":
@@ -219,9 +271,14 @@ while True:
         cv2.rectangle(frame, (x1, y1), (x2, y2), (20, 20, 40), -1)
         cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 215, 0), 3)
         
-        teks_tengah(frame, "ALL MISI COMPLETED!", x1, x2, y1+50, cv2.FONT_HERSHEY_DUPLEX, 1.0, (255, 215, 0), 2)
+        if misi_index >= len(misi_list):
+            teks_tengah(frame, "ALL MISI COMPLETED!", x1, x2, y1+50, cv2.FONT_HERSHEY_DUPLEX, 1.0, (255, 215, 0), 2)
+            teks_tengah(frame, "Ekonomi keluarga berhasil digendong Ash!", x1, x2, y1+160, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+        else:
+            teks_tengah(frame, "GAME OVER - TIME UP", x1, x2, y1+50, cv2.FONT_HERSHEY_DUPLEX, 1.0, (0, 0, 255), 2)
+            teks_tengah(frame, f"Gagal di Misi ke-{misi_index+1}", x1, x2, y1+160, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+
         teks_tengah(frame, f"TOTAL XP AKHIR: {xp}", x1, x2, y1+110, cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-        teks_tengah(frame, "Ekonomi keluarga berhasil digendong Ash!", x1, x2, y1+160, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
         teks_berkedip_tengah(frame, ">>> TEKAN 'R' UNTUK MENGULANG GAME <<<", x1, x2, y1+220, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
     cv2.imshow('Treasure Hunter - Asep enterprise', frame)
@@ -229,7 +286,8 @@ while True:
 
     if key == ord('q'):
         break
-
+    
+    # === FITUR RESET GAME (KEMBALI KE NOL) ===
     elif key == ord('r') or key == ord('R'):
         if state == "GAME_OVER":
             conn = sqlite3.connect(db.db_path)
@@ -245,32 +303,46 @@ while True:
             scan_progress = 0
             story_index = 0
             story_timer = time.time()
+            warning_played = False
             state = "INTRO"
             audio.speak("System reset. Let's start over.")
             print("[DB] Game berhasil di-reset ke nol!")
 
+    # === LOGIKA AKSI TOMBOL SPASI ===
     elif key == ord(' '):  
         if state == "INTRO" and story_index >= len(story):
             state = "MISI"
             scan_progress = 0
+            warning_played = False
+            misi_start_time = time.time()  # Start countdown misi 1
         elif state == "SUKSES":
             misi_sekarang = misi_list[misi_index]
-            xp += misi_sekarang['xp']
+            
+            # Hitung XP + Akumulasi Time Bonus (1 detik sisa waktu = 10 XP bonus)
+            bonus_xp = int(sisa_waktu) * 10
+            total_xp_didapat = misi_sekarang['xp'] + bonus_xp
+            
+            xp += total_xp_didapat
             level = 1 + (xp // 100)
             
-            audio.speak(f"Success! You obtained {misi_sekarang['hadiah_item']}.")
+            # Asisten AI menyebutkan sisa waktu bermainmu
+            audio.speak(f"Success! You obtained {misi_sekarang['hadiah_item']} with {int(sisa_waktu)} seconds left.")
             
             db.tambah_ke_inventory(misi_sekarang['hadiah_item'], f"Didapat dari {misi_sekarang['judul']}")
             db.save_game(xp, level, misi_index + 1)
             daftar_inventory = db.ambil_all_inventory()
             
+            # Reset flag warning & naikkan indeks misi
+            warning_played = False 
             misi_index += 1
             scan_progress = 0
+            
             if misi_index >= len(misi_list):
                 state = "GAME_OVER"
                 audio.speak("Congratulations! All missions completed. Family economy successfully carried!")
             else:
                 state = "MISI"
+                misi_start_time = time.time()  # Reset benchmark timer untuk misi berikutnya
 
 cap.release()
 cv2.destroyAllWindows()
