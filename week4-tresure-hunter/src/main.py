@@ -17,7 +17,7 @@ misi_list = [
         "hsv_upper": [110, 100, 255],
         "xp": 50,
         "hadiah_item": "Kunci Kuno Emas",
-        "durasi": 20  # Batas waktu dalam detik
+        "durasi": 20  # Batas waktu per misi (detik)
     },
     {
         "id": 2,
@@ -58,7 +58,7 @@ detector = TargetDetector()
 db = GameDatabase()
 audio = GameAudio() 
 
-# Load progress dari SQLite
+# Load progress lama dari SQLite
 saved_xp, saved_level, saved_misi_index = db.load_game()
 
 xp = saved_xp
@@ -66,12 +66,19 @@ level = saved_level
 misi_index = saved_misi_index
 daftar_inventory = db.ambil_all_inventory()
 
+# Manajemen Variabel Global & Leaderboard Speedrun
+game_start_time = 0
+total_waktu_bermain = 0
+skor_tercatat = False
+top_skor_list = []
+
 if misi_index >= len(misi_list):
     state = "GAME_OVER"
+    top_skor_list = db.ambil_top_skor(3) # Load leaderboard jika game sudah tamat dari awal
 else:
     state = "INTRO"
 
-# Voice sambutan pembuka game
+# Sambutan Suara AI
 audio.speak("Welcome back, Hunter Ash. Ready to find the artifacts?")
 
 story_index = 0
@@ -214,7 +221,7 @@ while True:
         # 3. Animasi Sci-Fi Scan Line (Laser Bergerak)
         laser_y += laser_speed
         if laser_y >= (h - 180) or laser_y <= 80:
-            laser_speed = -laser_speed  # Balik arah laser
+            laser_speed = -laser_speed
             
         cv2.line(frame, (30, laser_y), (w-30, laser_y), (0, 255, 0), 2)
 
@@ -253,33 +260,41 @@ while True:
         if scan_progress >= 100:
             state = "SUKSES"
 
-    # === STATE: SUKSES (Hanya untuk Render Pop-up) ===
+    # === STATE: SUKSES ===
     elif state == "SUKSES":
         misi = misi_list[misi_index]
         x1, y1, x2, y2 = w//2-250, h//2-120, w//2+250, h//2+120
         cv2.rectangle(frame, (x1, y1), (x2, y2), (10, 40, 10), -1)
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 4)
 
-        teks_tengah(frame, "OBJEK TERIDENTIFIKASI!", x1, x2, y1+50, cv2.FONT_HERSHEY_DUPLEX, 0.8, (0, 255, 0), 2)
-        teks_tengah(frame, f"REWARD AWAL: +{misi['xp']} XP", x1, x2, y1+100, cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 255), 1)
-        teks_tengah(frame, f"BONUS WAKTU: +{int(sisa_waktu) * 10} XP", x1, x2, y1+130, cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 1)
+        teks_tengah(frame, "OBJEK TERIDENTIFIKASI!", x1, x2, y1+45, cv2.FONT_HERSHEY_DUPLEX, 0.8, (0, 255, 0), 2)
+        teks_tengah(frame, f"REWARD AWAL: +{misi['xp']} XP", x1, x2, y1+95, cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 255), 1)
+        teks_tengah(frame, f"BONUS WAKTU: +{int(sisa_waktu) * 10} XP", x1, x2, y1+125, cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 1)
         teks_berkedip_tengah(frame, ">>> TEKAN SPASI UNTUK KLAIM HADIYAH <<<", x1, x2, y1+180, cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
 
-    # === STATE: GAME OVER ===
+    # === STATE: GAME OVER / TAMAT ===
     elif state == "GAME_OVER":
-        x1, y1, x2, y2 = w//2-300, h//2-140, w//2+300, h//2+140
+        x1, y1, x2, y2 = w//2-300, h//2-180, w//2+300, h//2+180
         cv2.rectangle(frame, (x1, y1), (x2, y2), (20, 20, 40), -1)
         cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 215, 0), 3)
         
         if misi_index >= len(misi_list):
-            teks_tengah(frame, "ALL MISI COMPLETED!", x1, x2, y1+50, cv2.FONT_HERSHEY_DUPLEX, 1.0, (255, 215, 0), 2)
-            teks_tengah(frame, "Ekonomi keluarga berhasil digendong Ash!", x1, x2, y1+160, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+            teks_tengah(frame, "ALL MISI COMPLETED!", x1, x2, y1+40, cv2.FONT_HERSHEY_DUPLEX, 0.9, (255, 215, 0), 2)
+            
+            # --- TAMPILAN LOCAL LEADERBOARD ---
+            teks_tengah(frame, "=== TOP 3 SPEEDRUN ===", x1, x2, y1+90, cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 1)
+            for idx, skor in enumerate(top_skor_list):
+                nama_player, waktu = skor
+                teks_skor = f"#{idx+1} {nama_player} - {waktu:.2f} detik"
+                teks_tengah(frame, teks_skor, x1, x2, y1+120+(idx*25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+                
+            teks_tengah(frame, f"Waktu Kamu: {total_waktu_bermain:.2f}s", x1, x2, y1+210, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
         else:
             teks_tengah(frame, "GAME OVER - TIME UP", x1, x2, y1+50, cv2.FONT_HERSHEY_DUPLEX, 1.0, (0, 0, 255), 2)
-            teks_tengah(frame, f"Gagal di Misi ke-{misi_index+1}", x1, x2, y1+160, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+            teks_tengah(frame, f"Gagal di Misi ke-{misi_index+1}", x1, x2, y1+110, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
 
-        teks_tengah(frame, f"TOTAL XP AKHIR: {xp}", x1, x2, y1+110, cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-        teks_berkedip_tengah(frame, ">>> TEKAN 'R' UNTUK MENGULANG GAME <<<", x1, x2, y1+220, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+        teks_tengah(frame, f"TOTAL XP AKHIR: {xp}", x1, x2, y1+250, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        teks_berkedip_tengah(frame, ">>> TEKAN 'R' UNTUK MENGULANG GAME <<<", x1, x2, y1+300, cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 2)
 
     cv2.imshow('Treasure Hunter - Asep enterprise', frame)
     key = cv2.waitKey(1) & 0xFF
@@ -304,6 +319,8 @@ while True:
             story_index = 0
             story_timer = time.time()
             warning_played = False
+            skor_tercatat = False
+            top_skor_list = []
             state = "INTRO"
             audio.speak("System reset. Let's start over.")
             print("[DB] Game berhasil di-reset ke nol!")
@@ -314,32 +331,40 @@ while True:
             state = "MISI"
             scan_progress = 0
             warning_played = False
-            misi_start_time = time.time()  # Start countdown misi 1
+            skor_tercatat = False
+            misi_start_time = time.time()  # Start timer misi 1
+            game_start_time = time.time()  # Start pencatatan waktu speedrun global
         elif state == "SUKSES":
             misi_sekarang = misi_list[misi_index]
             
-            # Hitung XP + Akumulasi Time Bonus (1 detik sisa waktu = 10 XP bonus)
+            # Hitung XP + Akumulasi Time Bonus
             bonus_xp = int(sisa_waktu) * 10
             total_xp_didapat = misi_sekarang['xp'] + bonus_xp
             
             xp += total_xp_didapat
             level = 1 + (xp // 100)
             
-            # Asisten AI menyebutkan sisa waktu bermainmu
             audio.speak(f"Success! You obtained {misi_sekarang['hadiah_item']} with {int(sisa_waktu)} seconds left.")
             
             db.tambah_ke_inventory(misi_sekarang['hadiah_item'], f"Didapat dari {misi_sekarang['judul']}")
             db.save_game(xp, level, misi_index + 1)
             daftar_inventory = db.ambil_all_inventory()
             
-            # Reset flag warning & naikkan indeks misi
             warning_played = False 
             misi_index += 1
             scan_progress = 0
             
             if misi_index >= len(misi_list):
                 state = "GAME_OVER"
+                total_waktu_bermain = time.time() - game_start_time # Hitung total waktu bersih speedrun
+                
                 audio.speak("Congratulations! All missions completed. Family economy successfully carried!")
+                
+                # Masukkan ke leaderboard secara lokal jika belum tercatat di sesi tamat ini
+                if not skor_tercatat:
+                    db.simpan_skor_leaderboard("ASH", xp, total_waktu_bermain)
+                    top_skor_list = db.ambil_top_skor(3)
+                    skor_tercatat = True
             else:
                 state = "MISI"
                 misi_start_time = time.time()  # Reset benchmark timer untuk misi berikutnya
