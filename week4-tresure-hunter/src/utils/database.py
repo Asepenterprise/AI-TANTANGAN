@@ -5,13 +5,13 @@ class GameDatabase:
     def __init__(self, db_path="data/savegame.db"):
         self.db_path = db_path
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-        self.init_db() # Jalankan pembuatan tabel saat database diakses
+        self.init_db()
 
     def init_db(self):
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        # 1. Tabel Progress Player
+        # Tabel Progress Player
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS player_progress (
                 id INTEGER PRIMARY KEY,
@@ -21,7 +21,7 @@ class GameDatabase:
             )
         ''')
         
-        # 2. Tabel Inventory Tas
+        # Tabel Inventory Tas
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS inventory (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,7 +30,7 @@ class GameDatabase:
             )
         ''')
         
-        # 3. Tabel Leaderboard Skor (DITAMBAHKAN DISINI)
+        # Tabel Leaderboard Speedrun
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS leaderboard (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,7 +41,6 @@ class GameDatabase:
             )
         ''')
         
-        # Inisialisasi data awal jika game baru pertama kali dijalankan
         cursor.execute('SELECT COUNT(*) FROM player_progress')
         if cursor.fetchone()[0] == 0:
             cursor.execute('INSERT INTO player_progress (id, xp, level, current_misi_index) VALUES (1, 0, 1, 0)')
@@ -70,7 +69,6 @@ class GameDatabase:
         return data
     
     def tambah_ke_inventory(self, nama_item, deskripsi):
-        """Memasukkan artefak baru ke dalam database tas"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
@@ -82,7 +80,6 @@ class GameDatabase:
             pass
 
     def ambil_all_inventory(self):
-        """Mengambil semua item yang dimiliki player untuk ditampilkan di HUD"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute('SELECT nama_item FROM inventory')
@@ -91,7 +88,6 @@ class GameDatabase:
         return [item[0] for item in items]
 
     def simpan_skor_leaderboard(self, nama, total_xp, waktu_total):
-        """Menyimpan rekor waktu tamat ke database"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute('''
@@ -103,7 +99,6 @@ class GameDatabase:
         print(f"[DB] Skor baru berhasil dicatat: {waktu_total:.2f} detik.")
 
     def ambil_top_skor(self, limit=3):
-        """Mengambil rekor waktu tercepat"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute('''
