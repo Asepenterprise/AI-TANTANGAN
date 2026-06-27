@@ -11,18 +11,9 @@ from datetime import datetime
 from gtts import gTTS
 
 # =====================================================================
-# CONFIG SMART FALLBACK (SANGAT RAMAH INTEL CELERON)
+# CONFIG RAMAH INTEL CELERON (MEDIAPIPE ELIMINATED TOTAL)
 # =====================================================================
-MOCK_MODE = True  # Ubah ke False jika lu main di laptop i3/i5/i7/Ryzen
-
-if not MOCK_MODE:
-    import mediapipe.solutions.hands as mp_hands
-    import mediapipe.solutions.pose as mp_pose
-    import mediapipe.solutions.face_mesh as mp_face_mesh
-    import mediapipe.solutions.drawing_utils as mp_draw
-    import mediapipe.solutions.drawing_styles as mp_style
-else:
-    print("[SYSTEM] Running in Celeron Mock Mode. MediaPipe bypassed safely.")
+print("[SYSTEM] Running in Pure Celeron Mode. MediaPipe eliminated safely.")
 
 from vision.detector import TargetDetector
 from utils.database import GameDatabase
@@ -81,12 +72,6 @@ db = GameDatabase()
 audio = GameAudio() 
 pygame.mixer.init()
 
-# === INITIALIZATION MEDIAPIPE PIPELINES ===
-if not MOCK_MODE:
-    hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7)
-    pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5, model_complexity=0)
-    face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5)
-
 # === LOAD ASSETS & DATA ===
 path_avatar = "data/assets/avatar_ash.png"
 avatar_img = cv2.imread(path_avatar, cv2.IMREAD_UNCHANGED) if os.path.exists(path_avatar) else None
@@ -103,26 +88,18 @@ skor_tercatat = False
 top_skor_list = []
 frame_count = 0
 
-# Variables: Gesture
+# Variables: Gesture Simulation
 ily_tahap = 0
-menu_cooldown = 0
-ujung_jari = [8, 12, 16, 20]
-ujung_pangkal = [6, 10, 14, 18]
 
-# Variables: Biometric Face
+# Variables: Biometric Face Simulation
 face_lock_start = None
 
 # Variables: Game & Gym
 scan_progress = 0
-laser_y = 80
-laser_speed = 6
 misi_start_time = 0 
 sisa_waktu = 0
-warning_played = False
 gym_mode = "PUSHUP"
 pushup_counter, squat_counter = 0, 0
-pushup_status, squat_status = "UP", "UP"
-plank_aktif, plank_mulai, plank_total = False, None, 0
 suara_cooldown = 0
 
 # === AUDIO ENGINE SYNTHESIS ===
@@ -168,17 +145,40 @@ def gambar_ui_inventory(frame, w, h):
     str_inventory = "TAS INVENTORY: " + (", ".join(daftar_inventory) if daftar_inventory else "Kosong")
     cv2.putText(frame, str_inventory, (35, h-115), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (220, 220, 220), 1, cv2.LINE_AA)
 
-def deteksi_jari(lm):
-    jari = [lm[4].x < lm[3].x]
-    for ujung, pangkal in zip(ujung_jari, ujung_pangkal):
-        jari.append(lm[ujung].y < lm[pangkal].y)
-    return jari
+def gambar_hud_cyberpunk(frame, w, h, persen_deteksi):
+    # 1. Gambar Kotak Keker (Target Box) di Tengah Layar
+    box_w, box_h = 300, 300
+    x1, y1 = (w - box_w) // 2, (h - box_h) // 2
+    x2, y2 = x1 + box_w, y1 + box_h
+    
+    # Warna berubah jadi hijau menyala kalau objek target mulai terdeteksi
+    warna_hud = (0, 255, 0) if persen_deteksi > 8 else (0, 215, 255) 
+    
+    # 2. Gambar Siku-Siku Kamera (Corner Brackets)
+    panjang_garis = 30
+    tebal_garis = 2
+    # Kiri Atas
+    cv2.line(frame, (x1, y1), (x1 + panjang_garis, y1), warna_hud, tebal_garis)
+    cv2.line(frame, (x1, y1), (x1, y1 + panjang_garis), warna_hud, tebal_garis)
+    # Kanan Atas
+    cv2.line(frame, (x2, y1), (x2 - panjang_garis, y1), warna_hud, tebal_garis)
+    cv2.line(frame, (x2, y1), (x2, y1 + panjang_garis), warna_hud, tebal_garis)
+    # Kiri Bawah
+    cv2.line(frame, (x1, y2), (x1 + panjang_garis, y2), warna_hud, tebal_garis)
+    cv2.line(frame, (x1, y2), (x1, y2 - panjang_garis), warna_hud, tebal_garis)
+    # Kanan Bawah
+    cv2.line(frame, (x2, y2), (x2 - panjang_garis, y2), warna_hud, tebal_garis)
+    cv2.line(frame, (x2, y2), (x2, y2 - panjang_garis), warna_hud, tebal_garis)
 
-def hitung_sudut(a, b, c):
-    a, b, c = np.array(a), np.array(b), np.array(c)
-    ba, bc = a - b, c - b
-    cosine = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
-    return np.degrees(np.arccos(np.clip(cosine, -1.0, 1.0)))
+    # 3. Efek Titik Target Tengah (Center Crosshair)
+    cv2.circle(frame, (w // 2, h // 2), 4, warna_hud, -1)
+    
+    # 4. Teks Animasi Deteksi Statis di Dekat Keker
+    if persen_deteksi > 8:
+        cv2.putText(frame, "LOCKING TARGET...", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
+    else:
+        cv2.putText(frame, "SCANNING AREA...", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 215, 255), 1, cv2.LINE_AA)
+
 
 # === MAIN SYSTEM LOOP ===
 while True:
@@ -202,15 +202,14 @@ while True:
     key = cv2.waitKey(1) & 0xFF
 
     # ----------------------------------------------------
-    # [PROJECT 1 STATE]: SECURITY GESTURE RAHASIA
+    # [STATE 1]: SECURITY GESTURE RAHASIA (SIMULASI)
     # ----------------------------------------------------
     if state == "GESTURE_INTRO":
         cv2.rectangle(frame, (50, 90), (w-50, h-190), (15, 15, 15), -1)
         cv2.rectangle(frame, (50, 90), (w-50, h-190), (0, 255, 255), 2)
         teks_tengah(frame, "SECURITY GATEWAY: LOCK SYSTEMS", 50, w-50, 130, cv2.FONT_HERSHEY_DUPLEX, 0.8, (0, 0, 255), 2)
         
-        if MOCK_MODE:
-            cv2.putText(frame, "[CELERON MODE] Tekan 'C' untuk Bypass Gesture", (70, h-220), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 165, 255), 1)
+        cv2.putText(frame, "[CELERON MODE] Tekan 'C' untuk Bypass Gesture Security", (70, h-220), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 165, 255), 1)
 
         warna_i = (0, 255, 0) if ily_tahap >= 1 else (100, 100, 100)
         warna_l = (0, 255, 0) if ily_tahap >= 2 else (100, 100, 100)
@@ -219,30 +218,14 @@ while True:
         cv2.putText(frame, "LOVE", (w//2 - 30, 210), cv2.FONT_HERSHEY_SIMPLEX, 1.3, warna_l, 3)
         cv2.putText(frame, "YOU", (w//2 + 80, 210), cv2.FONT_HERSHEY_SIMPLEX, 1.3, warna_y, 3)
 
-        if not MOCK_MODE:
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            hasil_tangan = hands.process(frame_rgb)
-            if hasil_tangan.multi_hand_landmarks:
-                for hand_lm in hasil_tangan.multi_hand_landmarks:
-                    mp_draw.draw_landmarks(frame, hand_lm, mp_hands.HAND_CONNECTIONS)
-                    jari = deteksi_jari(hand_lm.landmark)
-                    if ily_tahap == 0 and jari == [False, False, False, False, True]: ily_tahap = 1
-                    elif ily_tahap == 1 and jari == [True, True, False, False, False]: ily_tahap = 2
-                    elif ily_tahap == 2 and jari == [True, True, False, False, True]:
-                        ily_tahap = 3
-                        state = "BIOMETRIC_SCAN"
-                        speak_sync("Akses gesture diterima. Memulai pemindaian wajah biometrik.", suara_list["g_key"])
-                        face_lock_start = sekarang
-        else:
-            # Fallback Celeron Simulation
-            if key == ord('c') or key == ord('C'):
-                ily_tahap = 3
-                state = "BIOMETRIC_SCAN"
-                speak_sync("Akses gesture diterima. Memulai pemindaian wajah biometrik.", suara_list["g_key"])
-                face_lock_start = sekarang
+        if key == ord('c') or key == ord('C'):
+            ily_tahap = 3
+            state = "BIOMETRIC_SCAN"
+            speak_sync("Akses gesture diterima. Memulai pemindaian wajah biometrik.", suara_list["g_key"])
+            face_lock_start = sekarang
 
     # ----------------------------------------------------
-    # [PROJECT 2 STATE]: LITE BIOMETRIC SCAN
+    # [STATE 2]: LITE BIOMETRIC SCAN (SIMULASI AUTOSCAN)
     # ----------------------------------------------------
     elif state == "BIOMETRIC_SCAN":
         teks_tengah(frame, "SYSTEM SCANNING: DETEKSI WAJAH USER", 50, w-50, 110, cv2.FONT_HERSHEY_DUPLEX, 0.8, (0, 255, 255), 2)
@@ -250,35 +233,17 @@ while True:
         y_scan = int((sekarang % 2) / 2 * h)
         cv2.line(frame, (50, y_scan), (w-50, y_scan), (0, 255, 0), 2)
 
-        if not MOCK_MODE:
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            hasil_mesh = face_mesh.process(frame_rgb)
-            if hasil_mesh.multi_face_landmarks:
-                for f_lm in hasil_mesh.multi_face_landmarks:
-                    mp_draw.draw_landmarks(frame, f_lm, None, landmark_drawing_spec=None, connection_drawing_spec=mp_style.get_default_face_mesh_tesselation_style())
-                waktu_scan = sekarang - face_lock_start
-                if waktu_scan < 3.0:
-                    teks_tengah(frame, f"MENGANALISA STRUKTUR WAJAH... {int(waktu_scan/3*100)}%", 50, w-50, h//2, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 140, 255), 2)
-                else:
-                    state = "MISI"
-                    misi_start_time = sekarang
-                    game_start_time = sekarang
-                    audio.speak("Identity Verified. Welcome back Agent Ash. Mission Start!")
-            else:
-                teks_tengah(frame, "WAJAH TIDAK TERDETEKSI! HADAP KAMERA!", 50, w-50, h//2, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        waktu_scan = sekarang - face_lock_start
+        if waktu_scan < 3.0:
+            teks_tengah(frame, f"[CELERON MOCK] BERHASIL MENGANALISA STRUKTUR WAJAH... {int(waktu_scan/3*100)}%", 50, w-50, h//2, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         else:
-            # Fallback Celeron Simulation (Otomatis Scan setelah 3 detik)
-            waktu_scan = sekarang - face_lock_start
-            if waktu_scan < 3.0:
-                teks_tengah(frame, f"[CELERON MOCK] BERHASIL MENGANALISA STRUKTUR WAJAH... {int(waktu_scan/3*100)}%", 50, w-50, h//2, cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            else:
-                state = "MISI"
-                misi_start_time = sekarang
-                game_start_time = sekarang
-                audio.speak("Identity Verified. Welcome back Agent Ash. Mission Start!")
+            state = "MISI"
+            misi_start_time = sekarang
+            game_start_time = sekarang
+            audio.speak("Identity Verified. Welcome back Agent Ash. Mission Start!")
 
     # ----------------------------------------------------
-    # [CORE STATE]: TREASURE HUNTER COLOR ADVENTURE
+    # [CORE STATE]: TREASURE HUNTER COLOR ADVENTURE (REAL CAM)
     # ----------------------------------------------------
     elif state == "MISI":
         misi = misi_list[misi_index]
@@ -302,8 +267,11 @@ while True:
 
         if sisa_waktu <= 0: state = "GAME_OVER"; audio.speak("Time is up! Mission failed.")
 
-        # FITUR UTAMA BERBURU WARNA TETAP PAKAI KAMERA DI CELERON
+        # DETEKSI WARNA ASLI VIA OPENCV (TETAP JALAN UTAMA)
         persen = detector.hitung_persen_warna(frame, misi["hsv_lower"], misi["hsv_upper"])
+        
+        gambar_hud_cyberpunk(frame, w, h, persen)
+
         scan_progress = min(scan_progress + 2, 100) if persen > 8 else max(scan_progress - 1.5, 0)
 
         bar_w = int((w-100) * scan_progress / 100)
@@ -315,53 +283,22 @@ while True:
         if scan_progress >= 100: state = "SUKSES"
 
     # ----------------------------------------------------
-    # [PROJECT 3 STATE]: WORKOUT GYM TIME BOOST MODE
+    # [STATE 3]: WORKOUT GYM TIME BOOST MODE (SIMULASI TOMBOL)
     # ----------------------------------------------------
     elif state == "GYM_BOOST":
         cv2.rectangle(frame, (0, 60), (w, 120), (10, 30, 10), -1)
         cv2.line(frame, (0, 120), (w, 120), (0, 255, 0), 2)
         cv2.putText(frame, f"ENERGY BOOST ACTIVE - MODE: {gym_mode}", (20, 95), cv2.FONT_HERSHEY_DUPLEX, 0.75, (0, 255, 0), 2)
         
-        if not MOCK_MODE:
-            cv2.putText(frame, "P=PushUp   S=Squat   Spasi=Kembali Berburu", (w-500, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (240, 240, 240), 1)
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            hasil_pose = pose.process(frame_rgb)
-
-            if hasil_pose and hasil_pose.pose_landmarks:
-                mp_draw.draw_landmarks(frame, hasil_pose.pose_landmarks, mp_pose.POSE_CONNECTIONS)
-                lm = hasil_pose.pose_landmarks.landmark
-
-                if gym_mode == "PUSHUP":
-                    bahu = [lm[11].x * w, lm[11].y * h]
-                    siku = [lm[13].x * w, lm[13].y * h]
-                    pergelangan = [lm[15].x * w, lm[15].y * h]
-                    sudut = hitung_sudut(bahu, siku, pergelangan)
-                    if sudut < 90: pushup_status = "DOWN"
-                    elif sudut > 160 and pushup_status == "DOWN":
-                        pushup_status = "UP"; pushup_counter += 1
-                        misi_start_time += 7 
-                        if sekarang > suara_cooldown: audio.speak(f"{pushup_counter}"); suara_cooldown = sekarang + 1.5
-
-                elif gym_mode == "SQUAT":
-                    pinggul = [lm[23].x * w, lm[23].y * h]
-                    lutut = [lm[25].x * w, lm[25].y * h]
-                    engkel = [lm[27].x * w, lm[27].y * h]
-                    sudut = hitung_sudut(pinggul, lutut, engkel)
-                    if sudut < 130: squat_status = "DOWN"
-                    elif sudut > 160 and squat_status == "DOWN":
-                        squat_status = "UP"; squat_counter += 1
-                        misi_start_time += 10 
-                        if sekarang > suara_cooldown: audio.speak(f"{squat_counter}"); suara_cooldown = sekarang + 1.5
-        else:
-            # Fallback Celeron Simulation (Gunakan Tombol 'T' untuk nambah Repetisi Gym)
-            cv2.putText(frame, "P=PushUp   S=Squat   [CELETRON] Tekan 'T' buat Tambah Reps   Spasi=Kembali", (w-720, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
-            if key == ord('t') or key == ord('T'):
-                if gym_mode == "PUSHUP":
-                    pushup_counter += 1; misi_start_time += 7
-                    audio.speak(f"{pushup_counter}")
-                elif gym_mode == "SQUAT":
-                    squat_counter += 1; misi_start_time += 10
-                    audio.speak(f"{squat_counter}")
+        cv2.putText(frame, "P=PushUp   S=Squat   [CELERON] Tekan 'T' buat Tambah Reps   Spasi=Kembali", (w-720, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
+        
+        if key == ord('t') or key == ord('T'):
+            if gym_mode == "PUSHUP":
+                pushup_counter += 1; misi_start_time += 7
+                audio.speak(f"{pushup_counter}")
+            elif gym_mode == "SQUAT":
+                squat_counter += 1; misi_start_time += 10
+                audio.speak(f"{squat_counter}")
 
         cv2.putText(frame, f"PUSHUP REPS: {pushup_counter}", (50, h-220), cv2.FONT_HERSHEY_DUPLEX, 1.0, (0, 255, 0), 2)
         cv2.putText(frame, f"SQUAT REPS: {squat_counter}", (50, h-180), cv2.FONT_HERSHEY_DUPLEX, 1.0, (0, 255, 255), 2)
@@ -378,7 +315,7 @@ while True:
 
     elif state == "GAME_OVER":
         x1, y1, x2, y2 = w//2-300, h//2-120, w//2+300, h//2+120
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (20, 20, 30), -1)
+        cv2.rectangle(frame, (20, 20, 30), (w-20, h-20), (15, 15, 20), -1)
         teks_tengah(frame, "MISI SELESAI / TAMAT", x1, x2, y1+40, cv2.FONT_HERSHEY_DUPLEX, 0.8, (0, 215, 255), 2)
         teks_tengah(frame, f"TOTAL SKOR XP AKHIR: {xp}", x1, x2, y1+110, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 1)
         teks_tengah(frame, "Tekan 'R' untuk Reset Ulang Database", x1, x2, y1+180, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
