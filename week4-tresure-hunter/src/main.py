@@ -7,6 +7,7 @@ import math
 import threading
 import pygame
 import subprocess
+import random 
 from datetime import datetime
 from gtts import gTTS
 
@@ -48,14 +49,18 @@ misi_list = [
         "id": 3,
         "judul": "ARTEFAK KETIGA (BLUE MYSTIC)",
         "deskripsi": "Cari energi biru kuno di dekatmu!",
-        "petunjuk": "Arahkan kamera ke benda berwarna Biru",
-        "hsv_lower": [100, 150, 50],
-        "hsv_upper": [140, 255, 255],
+        "petunjuk": "Arahkan kamera ke benda berwarna Biru/Cyan",
+        "hsv_lower": [90, 100, 50],
+        "hsv_upper": [130, 255, 255],
         "xp": 150,
         "hadiah_item": "Plakat Biru Atlantis",
         "durasi": 20
     }
 ]
+
+# === LOGIKA UTAMA DAY 28: SHUFFLER ===
+print("[DAY 28] Mengacak urutan daftar misi agar gameplay bervariasi...")
+random.shuffle(misi_list) 
 
 # === INITIALIZATION BASE SYSTEM ===
 cap = cv2.VideoCapture(0)
@@ -80,18 +85,21 @@ saved_xp, saved_level, saved_misi_index = db.load_game()
 xp, level, misi_index = saved_xp, saved_level, saved_misi_index
 daftar_inventory = db.ambil_all_inventory()
 
+# --- FIX CRITICAL DAY 28: DETEKSI PENGAMAN INDEXERROR ---
+if misi_index >= len(misi_list):
+    state = "GAME_OVER"
+    print("[SYSTEM] Progress lama terdeteksi sudah TAMAT. Masuk ke layar GAME_OVER. Tekan 'R' untuk reset progress.")
+else:
+    state = "GESTURE_INTRO"
+
 # === SYSTEM VARIABLES ===
-state = "GESTURE_INTRO"  
-game_start_time = 0
+game_start_time = time.time()
 total_waktu_bermain = 0
 skor_tercatat = False
-top_skor_list = []
 frame_count = 0
 
 # Variables: Gesture Simulation
 ily_tahap = 0
-
-# Variables: Biometric Face Simulation
 face_lock_start = None
 
 # Variables: Game & Gym
@@ -100,14 +108,11 @@ misi_start_time = 0
 sisa_waktu = 0
 gym_mode = "PUSHUP"
 pushup_counter, squat_counter = 0, 0
-suara_cooldown = 0
 
 # === AUDIO ENGINE SYNTHESIS ===
 suara_list = {
     "g_intro": "data/audio_intro.mp3",
-    "g_key": "data/audio_gesture_key.mp3",
-    "g_akses": "data/audio_akses.mp3",
-    "g_scan": "data/audio_scanning.mp3"
+    "g_key": "data/audio_gesture_key.mp3"
 }
 
 def speak_sync(text_msg, file_path):
@@ -123,7 +128,8 @@ def speak_sync(text_msg, file_path):
         except: pass
     threading.Thread(target=play).start()
 
-speak_sync("Selamat datang tuan muda Ashraf, silakan masukkan gesture rahasia", suara_list["g_intro"])
+if state == "GESTURE_INTRO":
+    speak_sync("Selamat datang tuan muda Ashraf, silakan masukkan gesture rahasia", suara_list["g_intro"])
 
 # === HELPER UI FUNCTIONS ===
 def teks_tengah(frame, teks, x_start, x_end, y, font, scale, warna, tebal):
@@ -134,7 +140,7 @@ def teks_tengah(frame, teks, x_start, x_end, y, font, scale, warna, tebal):
 def gambar_ui_header(frame, w, h):
     cv2.rectangle(frame, (0, 0), (w, 60), (15, 15, 15), -1)
     cv2.line(frame, (0, 60), (w, 60), (0, 255, 255), 2)
-    cv2.putText(frame, "TREASURE HUNTER ARCHADE EDITION", (20, 40), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0, 255, 255), 2, cv2.LINE_AA)
+    cv2.putText(frame, "TREASURE HUNTER", (20, 40), cv2.FONT_HERSHEY_DUPLEX, 0.8, (0, 255, 255), 2, cv2.LINE_AA)
     cv2.rectangle(frame, (w-260, 15), (w-20, 45), (40, 40, 40), -1)
     cv2.rectangle(frame, (w-260, 15), (w-20, 45), (0, 255, 0), 1)
     cv2.putText(frame, f"XP: {xp} | LVL: {level}", (w-240, 36), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
@@ -146,39 +152,29 @@ def gambar_ui_inventory(frame, w, h):
     cv2.putText(frame, str_inventory, (35, h-115), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (220, 220, 220), 1, cv2.LINE_AA)
 
 def gambar_hud_cyberpunk(frame, w, h, persen_deteksi):
-    # 1. Gambar Kotak Keker (Target Box) di Tengah Layar
     box_w, box_h = 300, 300
     x1, y1 = (w - box_w) // 2, (h - box_h) // 2
     x2, y2 = x1 + box_w, y1 + box_h
     
-    # Warna berubah jadi hijau menyala kalau objek target mulai terdeteksi
     warna_hud = (0, 255, 0) if persen_deteksi > 8 else (0, 215, 255) 
     
-    # 2. Gambar Siku-Siku Kamera (Corner Brackets)
     panjang_garis = 30
     tebal_garis = 2
-    # Kiri Atas
     cv2.line(frame, (x1, y1), (x1 + panjang_garis, y1), warna_hud, tebal_garis)
     cv2.line(frame, (x1, y1), (x1, y1 + panjang_garis), warna_hud, tebal_garis)
-    # Kanan Atas
     cv2.line(frame, (x2, y1), (x2 - panjang_garis, y1), warna_hud, tebal_garis)
     cv2.line(frame, (x2, y1), (x2, y1 + panjang_garis), warna_hud, tebal_garis)
-    # Kiri Bawah
     cv2.line(frame, (x1, y2), (x1 + panjang_garis, y2), warna_hud, tebal_garis)
     cv2.line(frame, (x1, y2), (x1, y2 - panjang_garis), warna_hud, tebal_garis)
-    # Kanan Bawah
     cv2.line(frame, (x2, y2), (x2 - panjang_garis, y2), warna_hud, tebal_garis)
     cv2.line(frame, (x2, y2), (x2, y2 - panjang_garis), warna_hud, tebal_garis)
 
-    # 3. Efek Titik Target Tengah (Center Crosshair)
     cv2.circle(frame, (w // 2, h // 2), 4, warna_hud, -1)
     
-    # 4. Teks Animasi Deteksi Statis di Dekat Keker
     if persen_deteksi > 8:
         cv2.putText(frame, "LOCKING TARGET...", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
     else:
         cv2.putText(frame, "SCANNING AREA...", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 215, 255), 1, cv2.LINE_AA)
-
 
 # === MAIN SYSTEM LOOP ===
 while True:
@@ -190,7 +186,6 @@ while True:
     sekarang = time.time()
     frame_count += 1
 
-    # Shading Background Efek Cyberpunk
     overlay = frame.copy()
     cv2.rectangle(overlay, (0, 0), (w, h), (15, 10, 25), -1)
     cv2.addWeighted(overlay, 0.25, frame, 0.75, 0, frame)
@@ -198,7 +193,6 @@ while True:
     gambar_ui_header(frame, w, h)
     gambar_ui_inventory(frame, w, h)
 
-    # Ambil input key di awal biar responsive
     key = cv2.waitKey(1) & 0xFF
 
     # ----------------------------------------------------
@@ -255,7 +249,7 @@ while True:
 
         cv2.rectangle(frame, (175, 95), (650, 235), (20, 20, 20), -1)
         cv2.rectangle(frame, (175, 95), (650, 235), (0, 200, 255), 2)
-        cv2.putText(frame, f"{misi['judul']}", (190, 130), cv2.FONT_HERSHEY_DUPLEX, 0.65, (0, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(frame, f"MISI {misi_index + 1}: {misi['judul']}", (190, 130), cv2.FONT_HERSHEY_DUPLEX, 0.65, (0, 255, 255), 1, cv2.LINE_AA)
         cv2.putText(frame, misi['deskripsi'], (190, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
         cv2.putText(frame, f"Petunjuk: {misi['petunjuk']}", (190, 185), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 0), 1, cv2.LINE_AA)
 
@@ -265,11 +259,12 @@ while True:
 
         cv2.putText(frame, "Tekan 'G' untuk aktifkan GYM TIME BOOST", (20, h-180), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
 
-        if sisa_waktu <= 0: state = "GAME_OVER"; audio.speak("Time is up! Mission failed.")
+        if sisa_waktu <= 0: 
+            state = "GAME_OVER"
+            audio.speak("Time is up! Mission failed.")
 
-        # DETEKSI WARNA ASLI VIA OPENCV (TETAP JALAN UTAMA)
+        # DETEKSI WARNA
         persen = detector.hitung_persen_warna(frame, misi["hsv_lower"], misi["hsv_upper"])
-        
         gambar_hud_cyberpunk(frame, w, h, persen)
 
         scan_progress = min(scan_progress + 2, 100) if persen > 8 else max(scan_progress - 1.5, 0)
@@ -290,7 +285,7 @@ while True:
         cv2.line(frame, (0, 120), (w, 120), (0, 255, 0), 2)
         cv2.putText(frame, f"ENERGY BOOST ACTIVE - MODE: {gym_mode}", (20, 95), cv2.FONT_HERSHEY_DUPLEX, 0.75, (0, 255, 0), 2)
         
-        cv2.putText(frame, "P=PushUp   S=Squat   [CELERON] Tekan 'T' buat Tambah Reps   Spasi=Kembali", (w-720, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
+        cv2.putText(frame, "P=PushUp   S=Squat   Tekan 'T' buat Tambah Reps   Spasi=Kembali", (w-720, 95), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1)
         
         if key == ord('t') or key == ord('T'):
             if gym_mode == "PUSHUP":
@@ -315,12 +310,12 @@ while True:
 
     elif state == "GAME_OVER":
         x1, y1, x2, y2 = w//2-300, h//2-120, w//2+300, h//2+120
-        cv2.rectangle(frame, (20, 20, 30), (w-20, h-20), (15, 15, 20), -1)
+        cv2.rectangle(frame, (20, 20), (w-20, h-20), (15, 15, 20), -1)
         teks_tengah(frame, "MISI SELESAI / TAMAT", x1, x2, y1+40, cv2.FONT_HERSHEY_DUPLEX, 0.8, (0, 215, 255), 2)
         teks_tengah(frame, f"TOTAL SKOR XP AKHIR: {xp}", x1, x2, y1+110, cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 1)
-        teks_tengah(frame, "Tekan 'R' untuk Reset Ulang Database", x1, x2, y1+180, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        teks_tengah(frame, "Tekan 'R' untuk Reset Ulang Database & Re-Shuffle", x1, x2, y1+180, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
 
-    cv2.imshow('Treasure Hunter - Asep enterprise', frame)
+    cv2.imshow('Treasure Hunter - Asepenterprise', frame)
 
     # --- LOGIKA TOMBOL INPUTS ---
     if key == ord('q'): break
@@ -338,8 +333,10 @@ while True:
             xp, level, misi_index = 0, 1, 0
             daftar_inventory = []
             ily_tahap, scan_progress = 0, 0
+            
+            random.shuffle(misi_list)
             state = "GESTURE_INTRO"
-            audio.speak("System Data Reset.")
+            audio.speak("System Data Reset and Mission Re-shuffled.")
 
     elif key == ord(' '):  
         if state == "GYM_BOOST":
