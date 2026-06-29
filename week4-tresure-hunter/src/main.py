@@ -58,7 +58,7 @@ misi_list = [
     }
 ]
 
-# === LOGIKA UTAMA DAY 28: SHUFFLER ===
+# === LOGIKA DAY 28: SHUFFLER ===
 print("[DAY 28] Mengacak urutan daftar misi agar gameplay bervariasi...")
 random.shuffle(misi_list) 
 
@@ -85,7 +85,7 @@ saved_xp, saved_level, saved_misi_index = db.load_game()
 xp, level, misi_index = saved_xp, saved_level, saved_misi_index
 daftar_inventory = db.ambil_all_inventory()
 
-# --- FIX CRITICAL DAY 28: DETEKSI PENGAMAN INDEXERROR ---
+# --- DETEKSI PENGAMAN INDEXERROR ---
 if misi_index >= len(misi_list):
     state = "GAME_OVER"
     print("[SYSTEM] Progress lama terdeteksi sudah TAMAT. Masuk ke layar GAME_OVER. Tekan 'R' untuk reset progress.")
@@ -97,6 +97,7 @@ game_start_time = time.time()
 total_waktu_bermain = 0
 skor_tercatat = False
 frame_count = 0
+predikat_misi = "GOOD" 
 
 # Variables: Gesture Simulation
 ily_tahap = 0
@@ -275,7 +276,17 @@ while True:
             cv2.rectangle(frame, (50, h-60), (50+bar_w, h-25), (0, 255, 0) if scan_progress > 75 else (0, 255, 255), -1)
         teks_tengah(frame, f"MENGANALISA OBJEK... {int(scan_progress)}% | Kamera: {int(persen)}%", 50, w-50, h-37, cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
 
-        if scan_progress >= 100: state = "SUKSES"
+        # --- LOGIKA PENILAIAN RATING KINERJA ---
+        if scan_progress >= 100: 
+            state = "SUKSES"
+            persen_sisa = (sisa_waktu / misi['durasi']) * 100
+            if persen_sisa > 75:
+                predikat_misi = "PERFECT!!"
+            elif persen_sisa > 40:
+                predikat_misi = "COOL!"
+            else:
+                predikat_misi = "GOOD"
+            audio.speak(f"Mission cleared with {predikat_misi} rating!")
 
     # ----------------------------------------------------
     # [STATE 3]: WORKOUT GYM TIME BOOST MODE (SIMULASI TOMBOL)
@@ -299,14 +310,19 @@ while True:
         cv2.putText(frame, f"SQUAT REPS: {squat_counter}", (50, h-180), cv2.FONT_HERSHEY_DUPLEX, 1.0, (0, 255, 255), 2)
 
     # ----------------------------------------------------
-    # STATE: SUKSES & GAME OVER
+    # STATE: SUKSES (FIXED SYMMETRIC BOX UI) & GAME OVER
     # ----------------------------------------------------
     elif state == "SUKSES":
-        x1, y1, x2, y2 = w//2-250, h//2-100, w//2+250, h//2+100
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (10, 40, 10), -1)
+        # Koordinat diatur presisi simetris w//2-250 sampai w//2+250 agar box seimbang di tengah
+        x1, y1, x2, y2 = w//2-250, h//2-120, w//2+250, h//2+120
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (15, 35, 15), -1)
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 3)
-        teks_tengah(frame, "ARTEFAK AMAN DIIDENTIFIKASI!", x1, x2, y1+40, cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 255, 0), 2)
-        teks_tengah(frame, ">>> TEKAN SPASI UNTUK AMBIL REWARD <<<", x1, x2, y1+150, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        
+        warna_rank = (0, 215, 255) if predikat_misi == "PERFECT!!" else ((0, 255, 255) if predikat_misi == "COOL!" else (255, 255, 255))
+        
+        teks_tengah(frame, f"RANK: {predikat_misi}", x1, x2, y1+45, cv2.FONT_HERSHEY_DUPLEX, 1.1, warna_rank, 3)
+        teks_tengah(frame, "ARTEFAK AMAN DIIDENTIFIKASI!", x1, x2, y1+95, cv2.FONT_HERSHEY_SIMPLEX, 0.55, (240, 240, 240), 1)
+        teks_tengah(frame, ">>> TEKAN SPASI UNTUK AMBIL REWARD <<<", x1, x2, y1+175, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1)
 
     elif state == "GAME_OVER":
         x1, y1, x2, y2 = w//2-300, h//2-120, w//2+300, h//2+120
@@ -343,7 +359,12 @@ while True:
             state = "MISI" 
         elif state == "SUKSES":
             misi_sekarang = misi_list[misi_index]
-            xp += misi_sekarang['xp']
+            
+            # --- ALOKASI BONUS XP BERDASARKAN RATING ---
+            bonus_xp = 50 if predikat_misi == "PERFECT!!" else (20 if predikat_misi == "COOL!" else 0)
+            total_xp_didapat = misi_sekarang['xp'] + bonus_xp
+            
+            xp += total_xp_didapat
             level = 1 + (xp // 100)
             
             audio.speak(f"Obtained {misi_sekarang['hadiah_item']}.")
